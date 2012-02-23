@@ -1,4 +1,5 @@
 import System.IO
+import Data.Char
 import Data.List
 import Data.Function
 import Control.Monad
@@ -6,6 +7,8 @@ import Text.JSON (Result(..))
 import qualified Text.JSON as JSON
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Set (Set)
+import qualified Data.Set as Set
 
 type StringMap = [(String, String)]
 
@@ -57,6 +60,16 @@ bucketOnMfg l mfgs =
 	-- Pre-group items to reduce number of expensive fuzzy matches
 	groupOnMfg = totalGroupBy (compare `on` lookup "manufacturer") l
 
+queryTokens :: String -> Set String
+queryTokens s = queryTokens' (map toLower s) Set.empty
+	where
+	queryTokens' str set =
+		case dropWhile (not . isAlphaNum) str of
+			[] -> set
+			cleanStr ->
+				let (token, rest) = span isAlphaNum cleanStr in
+					queryTokens' rest (Set.insert token set)
+
 main :: IO ()
 main = do
 	listings <- readFile "listings.txt"
@@ -64,10 +77,17 @@ main = do
 	-- First, decode the JSON into association lists. Handle errors
 	case mapM parseJsonObjects [listings, products] of
 		Ok [l,p] ->
-			let pByMfg = mapByMfg p in
+			let pByMfg = productMap p in
 				print $ bucketOnMfg l (Map.keys pByMfg)
 		Error s -> hPutStrLn stderr s
 		_ -> error "coding error"
 	where
-	mapByMfg lst = foldl' (\m x ->
-		Map.insertWith (++) (lookup "manufacturer" x) [x] m) Map.empty lst
+	productMap = foldl' (\m x ->
+			case extract x of
+				Just (name,query) -> Map.insertWith (++)
+					(lookup "manufacturer" x) [(name, queryTokens query)] m
+				Nothing -> m
+		) Map.empty
+	extract x = liftM2 (,) (lookup "product_name" x)
+		(lookup "model" x ?++ Just " " ?++ lookup "family" x)
+	(?++) = liftM2 (++)
