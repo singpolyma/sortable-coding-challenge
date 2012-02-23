@@ -5,12 +5,13 @@ import Data.Ord
 import Control.Monad
 import Text.JSON (Result(..))
 import qualified Text.JSON as JSON
-import Data.Map (Map)
+import Data.Map (Map,(!))
 import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 
 type StringMap = [(String, String)]
+type DictMap = Map String [StringMap]
 
 lcsubs :: (Eq a) => [a] -> [a] -> [a]
 lcsubs xs ys = maximumBy (comparing length) $
@@ -32,7 +33,11 @@ parseJsonObjects str =
 totalGroupBy :: (a -> a -> Ordering) -> [a] -> [[a]]
 totalGroupBy cmp xs = groupBy (\x -> (EQ==) . cmp x) (sortBy cmp xs)
 
-bucketOnMfg :: [StringMap] -> [Maybe String] -> Map String [StringMap]
+nothingIsFalse :: Maybe Bool -> Bool
+nothingIsFalse Nothing = False
+nothingIsFalse (Just x) = x
+
+bucketOnMfg :: [StringMap] -> [Maybe String] -> DictMap
 bucketOnMfg l mfgs =
 	foldl' (\m group ->
 		let mfgG = mfgForGroup group in
@@ -50,8 +55,6 @@ bucketOnMfg l mfgs =
 				_ -> m
 	) Map.empty groupOnMfg
 	where
-	nothingIsFalse Nothing = False
-	nothingIsFalse (Just x) = x
 	maybeMinLength xs ys = liftM2 min (fmap length xs) (fmap length ys)
 	llcsubs xs ys = length $ lcsubs xs ys
 	mfgForGroup group = case lookup "manufacturer" $ head group of
@@ -70,6 +73,24 @@ queryTokens s = queryTokens' (map toLower s) Set.empty
 				let (token, rest) = span isAlphaNum cleanStr in
 					queryTokens' rest (Set.insert token set)
 
+matchOneMfg :: [(String,Set String)] -> DictMap -> StringMap -> DictMap
+matchOneMfg mfgProducts m listing =
+	case find (\(_,query) ->
+		-- Get the product from this mfg where the product tokens
+		-- are a subset of the listing title tokens
+		nothingIsFalse $ fmap (Set.isSubsetOf query)
+			(fmap queryTokens (lookup "title" listing))
+	) mfgProducts of
+		Nothing -> m -- No product matched
+		Just (name,_) -> Map.insertWith (++) name [listing] m
+
+matchAllMfg :: Map (Maybe String) [(String, Set String)] ->
+               DictMap -> DictMap
+matchAllMfg pByMfg lByMfg = Map.foldrWithKey (\mfg grp m ->
+		-- Build up a map from product_name to list of listings
+		Map.union m $ foldl' (matchOneMfg (pByMfg ! Just mfg)) Map.empty grp
+	) Map.empty lByMfg
+
 main :: IO ()
 main = do
 	listings <- readFile "listings.txt"
@@ -77,8 +98,16 @@ main = do
 	-- First, decode the JSON into association lists. Handle errors
 	case mapM parseJsonObjects [listings, products] of
 		Ok [l,p] ->
-			let pByMfg = productMap p in
-				print $ bucketOnMfg l (Map.keys pByMfg)
+			let pByMfg = productMap p
+			    res = matchAllMfg pByMfg (bucketOnMfg l (Map.keys pByMfg))
+			    -- JSON formatting and output
+			    json = Map.foldrWithKey (\name listings acc ->
+					(JSON.toJSObject [
+						("product_name", JSON.showJSON name),
+						("listings", JSON.showJSON $ map JSON.toJSObject listings)
+					]) : acc
+				) [] res in
+					mapM_ putStrLn (map JSON.encode json)
 		Error s -> hPutStrLn stderr s
 		_ -> error "coding error"
 	where
