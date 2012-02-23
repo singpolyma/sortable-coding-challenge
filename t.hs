@@ -82,12 +82,16 @@ main = do
 		Error s -> hPutStrLn stderr s
 		_ -> error "coding error"
 	where
+	-- Extract the data we need from products (computing tokens, etc)
+	-- and put it all in a nice map key'd on manufacturer
 	productMap = foldl' (\m x ->
 			case extract x of
 				Just (name,query) -> Map.insertWith (++)
 					(lookup "manufacturer" x) [(name, queryTokens query)] m
 				Nothing -> m
 		) Map.empty
+	-- Extract the data we need from a product
 	extract x = liftM2 (,) (lookup "product_name" x)
 		(lookup "model" x ?++ Just " " ?++ lookup "family" x)
+	-- Shorthand for: concat monads that have lists in them
 	(?++) = liftM2 (++)
