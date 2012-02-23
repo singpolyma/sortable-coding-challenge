@@ -1,0 +1,9 @@
+*.class
+*.o
+*.hi
+t
+com/
+jerkson/
+*.swp
+*.jar
+*.txt
