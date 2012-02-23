@@ -4,6 +4,7 @@ import Data.Function
 import Control.Monad
 import Text.JSON (Result(..))
 import qualified Text.JSON as JSON
+import Data.Map (Map)
 import qualified Data.Map as Map
 
 type StringMap = [(String, String)]
@@ -23,12 +24,14 @@ parseJsonObjects :: String -> Result [StringMap]
 parseJsonObjects str =
 	mapM (fmap JSON.fromJSObject . JSON.decode) (lines str)
 
+-- Sort and then groupBy is exactly the same complexity as building a Map
+-- with (++) as the combine function (n log n + n worst case)
 totalGroupBy :: (a -> a -> Ordering) -> [a] -> [[a]]
 totalGroupBy cmp xs = groupBy (\x -> (EQ==) . cmp x) (sortBy cmp xs)
 
-bucketOnMfg :: [StringMap] -> [Maybe String] -> [(String, [StringMap])]
-bucketOnMfg l mfgs = map (\x -> (fst $ head x, map (concat . snd) x)) $
-		totalGroupBy (compare `on` fst) $ foldl' (\m group ->
+bucketOnMfg :: [StringMap] -> [Maybe String] -> Map String [StringMap]
+bucketOnMfg l mfgs =
+	foldl' (\m group ->
 		let mfgG = mfgForGroup group in
 			-- Find normalized manufacturer for this group
 			case find (\mfg ->
@@ -40,9 +43,9 @@ bucketOnMfg l mfgs = map (\x -> (fst $ head x, map (concat . snd) x)) $
 					-- the smallest mfg string, then this mfg is a good match
 					nothingIsFalse $ liftM2 (>=) llcsub minL
 			) mfgs of
-				Just (Just mfg) -> (mfg,group):m
+				Just (Just mfg) -> Map.insertWith (++) mfg group m
 				_ -> m
-	) [] groupOnMfg
+	) Map.empty groupOnMfg
 	where
 	nothingIsFalse Nothing = False
 	nothingIsFalse (Just x) = x
@@ -61,8 +64,8 @@ main = do
 	-- First, decode the JSON into association lists. Handle errors
 	case mapM parseJsonObjects [listings, products] of
 		Ok [l,p] ->
-			let pByMfg = mapByMfg p in print pByMfg
-				--mapM_ print $ bucketOnMfg l (Map.keys pByMfg)
+			let pByMfg = mapByMfg p in
+				print $ bucketOnMfg l (Map.keys pByMfg)
 		Error s -> hPutStrLn stderr s
 		_ -> error "coding error"
 	where
