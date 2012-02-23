@@ -1,7 +1,7 @@
 import System.IO
 import Data.Char
 import Data.List
-import Data.Function
+import Data.Ord
 import Control.Monad
 import Text.JSON (Result(..))
 import qualified Text.JSON as JSON
@@ -13,7 +13,7 @@ import qualified Data.Set as Set
 type StringMap = [(String, String)]
 
 lcsubs :: (Eq a) => [a] -> [a] -> [a]
-lcsubs xs ys = maximumBy (compare `on` length) $
+lcsubs xs ys = maximumBy (comparing length) $
 		-- Concat all the common substrings of xs in ys and vice-versa
 		concatMap (csubs ys) (tails xs) ++
 			concatMap (csubs xs) (drop 1 $ tails ys)
@@ -21,7 +21,7 @@ lcsubs xs ys = maximumBy (compare `on` length) $
 	-- Generate the common substrings between xs and ys
 	csubs xs ys = scanr consOrDrop [] $ zip xs ys
 	consOrDrop (x, y) acc | x == y = x:acc
-	consOrDrop _ _ | otherwise = []
+	consOrDrop _ _ = []
 
 parseJsonObjects :: String -> Result [StringMap]
 parseJsonObjects str =
@@ -58,7 +58,7 @@ bucketOnMfg l mfgs =
 		Just "" -> Nothing -- Ignore empty manufacturer strings
 		x -> x
 	-- Pre-group items to reduce number of expensive fuzzy matches
-	groupOnMfg = totalGroupBy (compare `on` lookup "manufacturer") l
+	groupOnMfg = totalGroupBy (comparing $ lookup "manufacturer") l
 
 queryTokens :: String -> Set String
 queryTokens s = queryTokens' (map toLower s) Set.empty
