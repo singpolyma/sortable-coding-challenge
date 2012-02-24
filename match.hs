@@ -118,7 +118,8 @@ matchOneMfg mfgProducts m listing =
 				let (name,_,_) = maximumBy (\(_,a,_) (_,b,_) ->
 						comparing length a b
 					) ys in ins name m
-	stripPrefixes s = stripPrefix' "dsc" $ stripPrefix' "dslr" s
+	stripPrefixes s = stripPrefix' "slt" $
+		stripPrefix' "dsc" $ stripPrefix' "dslr" s
 	ins name = Map.insertWith (++) name [listing]
 	cleanTitle = fmap cleanString (lookup "title" listing)
 
