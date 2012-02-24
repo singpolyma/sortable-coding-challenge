@@ -1,4 +1,4 @@
-GHCFLAGS=-O3 -Wall -XNoCPP -fno-warn-name-shadowing -XHaskell98
+GHCFLAGS=-Wall -XNoCPP -fno-warn-name-shadowing -XHaskell98 -O2
 HLINTFLAGS=-XHaskell98 -XNoCPP -i 'Use camelCase' -i 'Use String' -i 'Use head' -i 'Use string literal' -i 'Use list comprehension' --utf8
 
 match: match.hs
@@ -14,3 +14,4 @@ shell:
 
 clean:
 	find -name '*.o' -o -name '*.hi' | xargs $(RM)
+	$(RM) match
