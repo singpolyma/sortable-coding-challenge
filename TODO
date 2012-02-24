@@ -1,2 +1,4 @@
+== Haskell ==
+
 * Canon-T3 matches "Kit +3" if "Rebel" also appears in the title
 * Models formatted like: DSLR-<code> do not match titles "... <code> Digital SLR" and similar.  This may require probabilistic reasoning (Bayes/Decicion network?  Seems likely more prone to false-positive) -- This has been somewhat mitigated by stripping common prefixes from models
