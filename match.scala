@@ -1,3 +1,4 @@
+import java.lang.Character._
 import com.codahale.jerkson._
 import scala.io._
 import scala.math._
@@ -54,7 +55,39 @@ object Main extends App {
 		}
 	}
 
-	def cleanString(s: String) = s
+	def cleanString(s: String): String = {
+		def tokens(str: Seq[Char], xs: List[String]): List[String] = {
+			def continueTokens(str: Seq[Char], xs: List[String]) = {
+				val (token, rest) = str.span(isLetterOrDigit)
+				val recurse = tokens(rest, xs)
+				(token.mkString) :: recurse
+			}
+
+			str.span({ x => ! (x.isLetterOrDigit) }) match {
+				case (_, Nil) => xs
+				case (_::Nil, cleanStr) => continueTokens(cleanStr, xs)
+				case (s, cleanStr) => Nil.padTo(s.length, ' ').mkString ::
+					continueTokens(cleanStr, xs)
+			}
+		}
+
+		def addSpaces(str: Seq[Char], xs: List[Seq[Char]]): List[Seq[Char]] = (str, xs) match {
+			case (Nil, xs) => xs
+			case (str, xs) =>
+				val (noNum, noRest) = str.span({ x => ! (x.isDigit)})
+				noRest.span(isDigit) match {
+					case (Nil, rest) => noNum.mkString :: addSpaces(rest, xs)
+					case (num, rest) => addSpaces(rest, xs) match {
+						case recurs@((' ' :: _) :: _) =>
+							noNum :: num :: recurs
+						case recurs =>
+							noNum :: num :: (' ' :: Nil) :: recurs
+					}
+				}
+		}
+
+		addSpaces(tokens(s.toLowerCase, Nil).flatten, Nil).flatten.mkString
+	}
 
 	val listings = Source.fromFile("listings.txt")
 	val products = Source.fromFile("products.txt")
