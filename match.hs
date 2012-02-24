@@ -64,6 +64,7 @@ cleanString :: String -> String
 cleanString s =
 	concat $ addSpaces (concat $ queryTokens' (map toLower s) []) []
 	where
+	-- Add a space after every number that does not already have on after it
 	addSpaces [] xs = xs
 	addSpaces str xs =
 		let (noNum, noRest) = break isDigit str in
@@ -73,6 +74,8 @@ cleanString s =
 					case addSpaces rest xs of
 						recurs@((' ':_):_) -> noNum:num:recurs
 						recurs -> noNum:num:" ":recurs
+	-- Strip non-alphanumeric characters
+	-- Leave a space between numbers and other stuff
 	queryTokens' str xs =
 		case dropWhile (not . isAlphaNum) str of
 			[] -> xs
@@ -90,12 +93,11 @@ matchOneMfg mfgProducts m listing =
 		-- Filter by model
 		fromMaybe False $ fmap (isInfixOf query) cleanTitle
 	) mfgProducts of
-		[] -> continueAndStrip mfgProducts
+		[] -> continueWithStrip mfgProducts
 		[(name,_,_)] -> ins name m
 		xs -> continueByFamily xs
 	where
-	stripPrefixes s = stripPrefix' "dsc" $ stripPrefix' "dslr" s
-	continueAndStrip xs =
+	continueWithStrip xs =
 		case filter (\(_,query,_) ->
 			-- Filter by model, strip common prefixes
 			fromMaybe False $
@@ -116,6 +118,7 @@ matchOneMfg mfgProducts m listing =
 				let (name,_,_) = maximumBy (\(_,a,_) (_,b,_) ->
 						comparing length a b
 					) ys in ins name m
+	stripPrefixes s = stripPrefix' "dsc" $ stripPrefix' "dslr" s
 	ins name = Map.insertWith (++) name [listing]
 	cleanTitle = fmap cleanString (lookup "title" listing)
 
@@ -143,7 +146,9 @@ main = do
 					] : acc
 				) [] res in
 					mapM_ (putStrLn . JSON.encode) json
-					--sequence_ $ Map.foldrWithKey (\name listings acc -> acc ++ [putStrLn name] ++ map (\l -> putStrLn (fromJust $ lookup "title" l)) listings ++ [putStrLn ""]) [] res
+					-- The following is just an output hack that makes eyeballing
+					-- the results easier during debugging
+					-- sequence_ $ Map.foldrWithKey (\name listings acc -> acc ++ [putStrLn name] ++ map (\l -> putStrLn (fromJust $ lookup "title" l)) listings ++ [putStrLn ""]) [] res
 		Error s -> hPutStrLn stderr s
 		_ -> error "coding error"
 	where
