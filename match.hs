@@ -2,6 +2,7 @@ import System.IO
 import Data.Char
 import Data.List
 import Data.Ord
+import Data.Maybe
 import Control.Monad
 import Text.JSON (Result(..))
 import qualified Text.JSON as JSON
@@ -31,14 +32,6 @@ parseJsonObjects str =
 totalGroupBy :: (a -> a -> Ordering) -> [a] -> [[a]]
 totalGroupBy cmp xs = groupBy (\x -> (EQ==) . cmp x) (sortBy cmp xs)
 
-nothingIsFalse :: Maybe Bool -> Bool
-nothingIsFalse Nothing = False
-nothingIsFalse (Just x) = x
-
-nothingIsNil :: Maybe [a] -> [a]
-nothingIsNil Nothing = []
-nothingIsNil (Just xs) = xs
-
 bucketOnMfg :: [StringMap] -> [Maybe String] -> DictMap
 bucketOnMfg l mfgs =
 	foldl' (\m group ->
@@ -51,7 +44,7 @@ bucketOnMfg l mfgs =
 				    llcsub = liftM2 llcsubs (mfgForGroup group) mfg in
 					-- If the common substring length is >= the length of
 					-- the smallest mfg string, then this mfg is a good match
-					nothingIsFalse $ liftM2 (>=) llcsub minL
+					fromMaybe False $ liftM2 (>=) llcsub minL
 			) mfgs of
 				Just (Just mfg) -> Map.insertWith (++) mfg group m
 				_ -> m
@@ -73,9 +66,9 @@ cleanString s =
 	where
 	addSpaces [] xs = xs
 	addSpaces str xs =
-		let (noNum, noRest) = span (not . isDigit) str in
+		let (noNum, noRest) = break isDigit str in
 			case span isDigit noRest of
-				([], rest) -> noNum:(addSpaces rest xs)
+				([], rest) -> noNum : addSpaces rest xs
 				(num, rest) ->
 					case addSpaces rest xs of
 						recurs@((' ':_):_) -> noNum:num:recurs
@@ -89,15 +82,13 @@ cleanString s =
 					token : if isDigit (last token) then " ":recurs else recurs
 
 stripPrefix' :: Eq a => [a] -> [a] -> [a]
-stripPrefix' prefix xs = case stripPrefix prefix xs of
-	Just list -> list
-	Nothing -> xs
+stripPrefix' prefix xs = fromMaybe xs (stripPrefix prefix xs)
 
 matchOneMfg :: [(String,String,String)] -> DictMap -> StringMap -> DictMap
 matchOneMfg mfgProducts m listing =
 	case filter (\(_,query,_) ->
 		-- Filter by model
-		nothingIsFalse $ fmap (isInfixOf query) cleanTitle
+		fromMaybe False $ fmap (isInfixOf query) cleanTitle
 	) mfgProducts of
 		[] -> continueAndStrip mfgProducts
 		[(name,_,_)] -> ins name m
@@ -107,7 +98,7 @@ matchOneMfg mfgProducts m listing =
 	continueAndStrip xs =
 		case filter (\(_,query,_) ->
 			-- Filter by model, strip common prefixes
-			nothingIsFalse $
+			fromMaybe False $
 				fmap (isInfixOf $ stripPrefixes query) cleanTitle
 		) xs of
 			[] -> m -- No product matched
@@ -117,15 +108,15 @@ matchOneMfg mfgProducts m listing =
 		case filter (\(_,_,query) ->
 			-- Filter by family
 			length query > 0 &&
-				nothingIsFalse (fmap (isInfixOf query) cleanTitle)
+				fromMaybe False (fmap (isInfixOf query) cleanTitle)
 		) xs of
 			[] -> m -- No product matched
 			[(name,_,_)] -> ins name m
 			ys -> -- Still more than one match. Take the longest model
 				let (name,_,_) = maximumBy (\(_,a,_) (_,b,_) ->
-						compare (length a) (length b)
+						comparing length a b
 					) ys in ins name m
-	ins name m = Map.insertWith (++) name [listing] m
+	ins name = Map.insertWith (++) name [listing]
 	cleanTitle = fmap cleanString (lookup "title" listing)
 
 matchAllMfg :: Map (Maybe String) [(String,String,String)] ->
@@ -151,7 +142,7 @@ main = do
 						("listings", JSON.showJSON $ map JSON.toJSObject listings)
 					] : acc
 				) [] res in
-					mapM_ putStrLn (map JSON.encode json)
+					mapM_ (putStrLn . JSON.encode) json
 					--sequence_ $ Map.foldrWithKey (\name listings acc -> acc ++ [putStrLn name] ++ map (\l -> putStrLn (fromJust $ lookup "title" l)) listings ++ [putStrLn ""]) [] res
 		Error s -> hPutStrLn stderr s
 		_ -> error "coding error"
@@ -166,5 +157,5 @@ main = do
 				Nothing -> m
 		) Map.empty
 	-- Extract the data we need from a product
-	extract x = liftM2 ((,,) (nothingIsNil $ lookup "family" x))
+	extract x = liftM2 ((,,) (fromMaybe [] $ lookup "family" x))
 		(lookup "model" x) (lookup "product_name" x)
