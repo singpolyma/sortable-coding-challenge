@@ -88,26 +88,43 @@ cleanString s =
 				    recurs = queryTokens' rest xs in
 					token : if isDigit (last token) then " ":recurs else recurs
 
+stripPrefix' :: Eq a => [a] -> [a] -> [a]
+stripPrefix' prefix xs = case stripPrefix prefix xs of
+	Just list -> list
+	Nothing -> xs
+
 matchOneMfg :: [(String,String,String)] -> DictMap -> StringMap -> DictMap
 matchOneMfg mfgProducts m listing =
 	case filter (\(_,query,_) ->
 		-- Filter by model
 		nothingIsFalse $ fmap (isInfixOf query) cleanTitle
 	) mfgProducts of
-		[] -> m -- No product matched
+		[] -> continueAndStrip mfgProducts
 		[(name,_,_)] -> ins name m
-		xs -> case filter (\(_,_,query) ->
-				-- Filter by family
-				length query > 0 &&
-					nothingIsFalse (fmap (isInfixOf query) cleanTitle)
-			) xs of
-				[] -> m -- No product matched
-				[(name,_,_)] -> ins name m
-				ys -> -- Still more than one match. Take the longest model
-					let (name,_,_) = maximumBy (\(_,a,_) (_,b,_) ->
-							compare (length a) (length b)
-						) ys in ins name m
+		xs -> continueByFamily xs
 	where
+	stripPrefixes s = stripPrefix' "dsc" $ stripPrefix' "dslr" s
+	continueAndStrip xs =
+		case filter (\(_,query,_) ->
+			-- Filter by model, strip common prefixes
+			nothingIsFalse $
+				fmap (isInfixOf $ stripPrefixes query) cleanTitle
+		) xs of
+			[] -> m -- No product matched
+			[(name,_,_)] -> ins name m
+			ys -> continueByFamily ys
+	continueByFamily xs =
+		case filter (\(_,_,query) ->
+			-- Filter by family
+			length query > 0 &&
+				nothingIsFalse (fmap (isInfixOf query) cleanTitle)
+		) xs of
+			[] -> m -- No product matched
+			[(name,_,_)] -> ins name m
+			ys -> -- Still more than one match. Take the longest model
+				let (name,_,_) = maximumBy (\(_,a,_) (_,b,_) ->
+						compare (length a) (length b)
+					) ys in ins name m
 	ins name m = Map.insertWith (++) name [listing] m
 	cleanTitle = fmap cleanString (lookup "title" listing)
 
