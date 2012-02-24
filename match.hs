@@ -62,7 +62,7 @@ bucketOnMfg l mfgs =
 
 cleanString :: String -> String
 cleanString s =
-	concat $ addSpaces (concat $ queryTokens' (map toLower s) []) []
+	concat $ addSpaces (concat $ tokens (map toLower s) []) []
 	where
 	-- Add a space after every number that does not already have on after it
 	addSpaces [] xs = xs
@@ -76,13 +76,16 @@ cleanString s =
 						recurs -> noNum:num:" ":recurs
 	-- Strip non-alphanumeric characters
 	-- Leave a space between numbers and other stuff
-	queryTokens' str xs =
-		case dropWhile (not . isAlphaNum) str of
-			[] -> xs
-			cleanStr ->
-				let (token, rest) = span isAlphaNum cleanStr
-				    recurs = queryTokens' rest xs in
-					token : if isDigit (last token) then " ":recurs else recurs
+	tokens str xs =
+		case break isAlphaNum str of
+			(_, []) -> xs
+			(_:[], cleanStr) -> continueTokens cleanStr xs
+			(s, cleanStr) ->
+				replicate (length s) ' ' : continueTokens cleanStr xs
+	continueTokens cleanStr xs =
+		let (token, rest) = span isAlphaNum cleanStr
+		    recurse = tokens rest xs in
+			token : if isDigit (last token) then " ":recurse else recurse
 
 stripPrefix' :: Eq a => [a] -> [a] -> [a]
 stripPrefix' prefix xs = fromMaybe xs (stripPrefix prefix xs)
