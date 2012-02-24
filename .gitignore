@@ -1,7 +1,7 @@
 *.class
 *.o
 *.hi
-t
+match
 com/
 jerkson/
 *.swp
