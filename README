@@ -10,5 +10,7 @@ All solutions write the final JSON to stdout.  Run like this:
 
 == Status of Solutions ==
 
-Haskell: Near complete (see TODO)
+A program is never really "complete", and that is especially true of this problem.  I will probably for quite some time wake up with things to try that might improve precision or recall.
+
+Haskell: Working
 Scala: Only does initial grouping by manufaturer
