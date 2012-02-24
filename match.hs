@@ -7,8 +7,6 @@ import Text.JSON (Result(..))
 import qualified Text.JSON as JSON
 import Data.Map (Map,(!))
 import qualified Data.Map as Map
-import Data.Set (Set)
-import qualified Data.Set as Set
 
 type StringMap = [(String, String)]
 type DictMap = Map String [StringMap]
@@ -37,6 +35,10 @@ nothingIsFalse :: Maybe Bool -> Bool
 nothingIsFalse Nothing = False
 nothingIsFalse (Just x) = x
 
+nothingIsNil :: Maybe [a] -> [a]
+nothingIsNil Nothing = []
+nothingIsNil (Just xs) = xs
+
 bucketOnMfg :: [StringMap] -> [Maybe String] -> DictMap
 bucketOnMfg l mfgs =
 	foldl' (\m group ->
@@ -63,33 +65,56 @@ bucketOnMfg l mfgs =
 	-- Pre-group items to reduce number of expensive fuzzy matches
 	groupOnMfg = totalGroupBy (comparing $ lookup "manufacturer") l
 
-queryTokens :: String -> Set String
-queryTokens s = queryTokens' (map toLower s) Set.empty
+cleanString :: String -> String
+cleanString s =
+	concat $ addSpaces (concat $ queryTokens' (map toLower s) []) []
 	where
-	queryTokens' str set =
+	addSpaces [] xs = xs
+	addSpaces str xs =
+		let (noNum, noRest) = span (not . isDigit) str in
+			case span isDigit noRest of
+				([], rest) -> noNum:(addSpaces rest xs)
+				(num, rest) ->
+					case addSpaces rest xs of
+						recurs@((' ':_):_) -> noNum:num:recurs
+						recurs -> noNum:num:" ":recurs
+	queryTokens' str xs =
 		case dropWhile (not . isAlphaNum) str of
-			[] -> set
+			[] -> xs
 			cleanStr ->
-				let (token, rest) = span isAlphaNum cleanStr in
-					queryTokens' rest (Set.insert token set)
+				let (token, rest) = span isAlphaNum cleanStr
+				    recurs = queryTokens' rest xs in
+					token : if isDigit (last token) then " ":recurs else recurs
 
-matchOneMfg :: [(String,Set String)] -> DictMap -> StringMap -> DictMap
+matchOneMfg :: [(String,String,String)] -> DictMap -> StringMap -> DictMap
 matchOneMfg mfgProducts m listing =
-	case find (\(_,query) ->
-		-- Get the product from this mfg where the product tokens
-		-- are a subset of the listing title tokens
-		nothingIsFalse $ fmap (Set.isSubsetOf query)
-			(fmap queryTokens (lookup "title" listing))
+	case filter (\(_,query,_) ->
+		-- Filter by model
+		nothingIsFalse $ fmap (isInfixOf query) cleanTitle
 	) mfgProducts of
-		Nothing -> m -- No product matched
-		Just (name,_) -> Map.insertWith (++) name [listing] m
+		[] -> m -- No product matched
+		[(name,_,_)] -> ins name m
+		xs -> case filter (\(_,_,query) ->
+				-- Filter by family
+				length query > 0 &&
+					nothingIsFalse (fmap (isInfixOf query) cleanTitle)
+			) xs of
+				[] -> m -- No product matched
+				[(name,_,_)] -> ins name m
+				ys -> -- Still more than one match. Take the longest model
+					let (name,_,_) = maximumBy (\(_,a,_) (_,b,_) ->
+							compare (length a) (length b)
+						) ys in ins name m
+	where
+	ins name m = Map.insertWith (++) name [listing] m
+	cleanTitle = fmap cleanString (lookup "title" listing)
 
-matchAllMfg :: Map (Maybe String) [(String, Set String)] ->
+matchAllMfg :: Map (Maybe String) [(String,String,String)] ->
                DictMap -> DictMap
-matchAllMfg pByMfg lByMfg = Map.foldrWithKey (\mfg grp m ->
+matchAllMfg pByMfg = Map.foldrWithKey (\mfg grp m ->
 		-- Build up a map from product_name to list of listings
 		Map.union m $ foldl' (matchOneMfg (pByMfg ! Just mfg)) Map.empty grp
-	) Map.empty lByMfg
+	) Map.empty
 
 main :: IO ()
 main = do
@@ -102,25 +127,25 @@ main = do
 			    res = matchAllMfg pByMfg (bucketOnMfg l (Map.keys pByMfg))
 			    -- JSON formatting and output
 			    json = Map.foldrWithKey (\name listings acc ->
-					(JSON.toJSObject [
+					JSON.toJSObject [
 						("product_name", JSON.showJSON name),
 						("listings", JSON.showJSON $ map JSON.toJSObject listings)
-					]) : acc
+					] : acc
 				) [] res in
 					mapM_ putStrLn (map JSON.encode json)
+					--sequence_ $ Map.foldrWithKey (\name listings acc -> acc ++ [putStrLn name] ++ map (\l -> putStrLn (fromJust $ lookup "title" l)) listings ++ [putStrLn ""]) [] res
 		Error s -> hPutStrLn stderr s
 		_ -> error "coding error"
 	where
-	-- Extract the data we need from products (computing tokens, etc)
+	-- Extract the data we need from products
 	-- and put it all in a nice map key'd on manufacturer
 	productMap = foldl' (\m x ->
 			case extract x of
-				Just (name,query) -> Map.insertWith (++)
-					(lookup "manufacturer" x) [(name, queryTokens query)] m
+				Just (family,model,name) -> Map.insertWith (++)
+					(lookup "manufacturer" x) [(name, cleanString model,
+						cleanString family)] m
 				Nothing -> m
 		) Map.empty
 	-- Extract the data we need from a product
-	extract x = liftM2 (,) (lookup "product_name" x)
-		(lookup "model" x ?++ Just " " ?++ lookup "family" x)
-	-- Shorthand for: concat monads that have lists in them
-	(?++) = liftM2 (++)
+	extract x = liftM2 ((,,) (nothingIsNil $ lookup "family" x))
+		(lookup "model" x) (lookup "product_name" x)
