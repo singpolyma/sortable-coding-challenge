@@ -9,7 +9,7 @@ match: match.hs
 	ghc $(GHCFLAGS) -o $@ $^
 
 Main.class: match.scala jackson.jar com/codahale/jerkson/Json.class
-	scalac -classpath .:jackson.jar match.scala
+	scalac -classpath .:jackson.jar -optimise -unchecked match.scala
 
 com/codahale/jerkson/Json.class: jackson.jar com/codahale/jerkson/JsonSnakeCase.class
 	find com/codahale/jerkson/ -name '*.scala' | xargs scalac -classpath .:jackson.jar
