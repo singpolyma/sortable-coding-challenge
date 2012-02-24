@@ -30,11 +30,15 @@ object Main extends App {
 	def parseJsonObjects(fh: Source) =
 		fh.getLines.map(Json.parse[Map[String,String]])
 
-	def bucketOnMfg(l: Iterable[StringMap], p: Iterable[StringMap]) = {
-		val mfgs = (p.map({ _("manufacturer") })).toList.distinct
+	def bucketOnMfg(l: Iterable[StringMap], mfgs: Iterable[String]) = {
 		// Pre-group items to reduce number of expensive fuzzy matches
-		(l.groupBy { lst => lst("manufacturer") }).
-			foldLeft(List[(String, Iterable[StringMap])]()) { case (m, (k, group)) =>
+		(l.groupBy { x =>
+			(if(x("manufacturer") == "") {
+				x("title")
+			} else {
+				x("manufacturer")
+			}).toLowerCase
+		}).foldLeft(List[(String, Iterable[StringMap])]()) { case (m, (k, group)) =>
 			// Find normalized manufacturer for this group
 			mfgs.find({ mfg =>
 				// Get length of smallest mfg string and common substring
@@ -42,7 +46,6 @@ object Main extends App {
 				// the smallest mfg string, then this mfg is a good match
 				lcsubs(mfg,k).length >= min(mfg.length, k.length)
 			}) match {
-				case Some("") => m // Ignore empty manufacturer strings
 				case Some(mfg) => (mfg,group)::m
 				case _ => m
 			}
@@ -51,12 +54,19 @@ object Main extends App {
 		}
 	}
 
+	def cleanString(s: String) = s
+
 	val listings = Source.fromFile("listings.txt")
 	val products = Source.fromFile("products.txt")
 	try {
 		val l = parseJsonObjects(listings)
 		val p = parseJsonObjects(products)
-		println(bucketOnMfg(l.toIterable,p.toIterable))
+		val pByMfg = (p.map { x =>
+			val y = x.withDefaultValue("")
+			(y("manufacturer").toLowerCase, y("product_name"),
+				cleanString(x("model")), cleanString(y("family")))
+		}).toIterable.groupBy { _ _1 }
+		println(bucketOnMfg(l.toIterable, pByMfg.keys))
 	} finally {
 		listings.close
 		products.close
