@@ -59,11 +59,13 @@ bucketOnMfg l mfgs =
 	where
 	maybeMinLength xs ys = liftM2 min (fmap length xs) (fmap length ys)
 	llcsubs xs ys = length $ lcsubs xs ys
-	mfgForGroup group = case lookup "manufacturer" $ head group of
-		Just "" -> Nothing -- Ignore empty manufacturer strings
-		x -> x
+	mfgForGroup group = lookupMfg $ head group
 	-- Pre-group items to reduce number of expensive fuzzy matches
-	groupOnMfg = totalGroupBy (comparing $ lookup "manufacturer") l
+	groupOnMfg = totalGroupBy (comparing lookupMfg) l
+	lookupMfg x = fmap (map toLower) $ case lookup "manufacturer" x of
+		Just "" -> lookup "title" x
+		Nothing -> lookup "title" x
+		x -> x
 
 cleanString :: String -> String
 cleanString s =
@@ -142,8 +144,8 @@ main = do
 	productMap = foldl' (\m x ->
 			case extract x of
 				Just (family,model,name) -> Map.insertWith (++)
-					(lookup "manufacturer" x) [(name, cleanString model,
-						cleanString family)] m
+					(fmap (map toLower) (lookup "manufacturer" x))
+						[(name, cleanString model, cleanString family)] m
 				Nothing -> m
 		) Map.empty
 	-- Extract the data we need from a product
