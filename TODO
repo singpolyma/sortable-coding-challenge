@@ -1,0 +1,3 @@
+* Canon-T3 matches "Kit +3" if "Rebel" also appears in the title
+* Models formatted like: DSLR-<code> do not match titles "... <code> Digital SLR" and similar.  This may require probabilistic reasoning (Bayes/Decicion network?  Seems likely more prone to false-positive)
+* Listings with no manufacturer are currently ignored completely.  Should do something smarter with them.
