@@ -20,6 +20,3 @@ The Scala solution requires a JAR file for Jackson (the Java JSON parser) in the
 == Status of Solutions ==
 
 A program is never really "complete", and that is especially true of this problem.  I will probably for quite some time wake up with things to try that might improve precision or recall.
-
-Haskell: Working
-Scala: Only does initial grouping by manufaturer
