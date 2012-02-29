@@ -12,6 +12,7 @@ import scala.math._
 
 object Match extends App {
 	type StringMap = Map[String,String]
+	type DictMap = Map[String, List[StringMap]]
 
 	def lcsubs(xs: String, ys: String) = {
 		def csubs(xs: String, ys: String) = {
@@ -56,18 +57,33 @@ object Match extends App {
 	}
 
 	def cleanString(s: String): String = {
+		def nspaces(l: Int, xs:List[Char]): List[Char] = {
+			if(l < 1) {
+				xs
+			} else {
+				nspaces(l-1, ' ' :: xs)
+			}
+		}
+
 		def tokens(str: Seq[Char], xs: List[String]): List[String] = {
 			def continueTokens(str: Seq[Char], xs: List[String]) = {
 				val (token, rest) = str.span(isLetterOrDigit)
 				val recurse = tokens(rest, xs)
-				(token.mkString) :: recurse
+				(token.mkString) :: (if(token.last.isDigit) {
+					" " :: recurse
+				} else {
+					recurse
+				})
 			}
 
 			str.span({ x => ! (x.isLetterOrDigit) }) match {
 				case (_, Nil) => xs
-				case (_::Nil, cleanStr) => continueTokens(cleanStr, xs)
-				case (s, cleanStr) => Nil.padTo(s.length, ' ').mkString ::
-					continueTokens(cleanStr, xs)
+				case (s, cleanStr) =>
+					if(s.length < 2) {
+						continueTokens(cleanStr, xs)
+					} else {
+						nspaces(s.length,List()).mkString :: continueTokens(cleanStr, xs)
+					}
 			}
 		}
 
@@ -77,16 +93,72 @@ object Match extends App {
 				val (noNum, noRest) = str.span({ x => ! (x.isDigit)})
 				noRest.span(isDigit) match {
 					case (Nil, rest) => noNum.mkString :: addSpaces(rest, xs)
-					case (num, rest) => addSpaces(rest, xs) match {
-						case recurs@((' ' :: _) :: _) =>
+					case (num, rest) =>
+						val recurs = addSpaces(rest, xs)
+						if(recurs.length > 0 && recurs.head.head == ' ') {
 							noNum :: num :: recurs
-						case recurs =>
+						} else {
 							noNum :: num :: (' ' :: Nil) :: recurs
-					}
+						}
 				}
 		}
 
 		addSpaces(tokens(s.toLowerCase, Nil).flatten, Nil).flatten.mkString
+	}
+
+	def matchAllMfg(
+		pByMfg: Map[String, Iterable[(String,String,String,String)]],
+		lByMfg: DictMap
+	): DictMap = {
+		def matchOneMfg(
+			mfgProducts: List[(String,String,String,String)],
+			listing: StringMap
+		): String = {
+			val cleanTitle = cleanString(listing("title"))
+
+			def stripPrefixes(s: String) =
+				s.stripPrefix("dslr").stripPrefix("dsc").stripPrefix("slt")
+
+			def continueWithStrip(xs: List[(String,String,String,String)]) = {
+				xs.filter { case (_,_,query,_) =>
+					// Filter by model, strip common prefixes
+					cleanTitle contains stripPrefixes(query)
+				} match {
+					case Nil => "" // No product matched
+					case (_,name,_,_)::Nil => name
+					case ys => continueByFamily(ys)
+				}
+			}
+
+			def continueByFamily(xs: List[(String,String,String,String)]) = {
+				xs.filter { case (_,_,_,query) =>
+					// Filter by family
+					query.length > 0 && (cleanTitle contains query)
+				} match {
+					case Nil => "" // No product matched
+					case (_,name,_,_)::Nil => name
+					case ys => // Still more than one match.  Take the longest model
+						val (_,name,_,_) = ys.maxBy { case (_,_,a,_) =>
+							a.length
+						}
+						name
+				}
+			}
+
+			mfgProducts.filter { case (_,_,query,_) =>
+				// Filter by model
+				cleanTitle contains query
+			} match {
+				case Nil => continueWithStrip(mfgProducts)
+				case (_,name,_,_)::Nil => name
+				case xs => continueByFamily(xs)
+			}
+		}
+
+		lByMfg.foldRight(Map[String, List[StringMap]]()) { case ((mfg, grp), m) =>
+			// Build up a map from product_name to list of listings
+			m ++ (grp.groupBy { x => matchOneMfg(pByMfg(mfg).toList, x) })
+		}
 	}
 
 	val listings = Source.fromFile("listings.txt")
@@ -99,7 +171,11 @@ object Match extends App {
 			(y("manufacturer").toLowerCase, y("product_name"),
 				cleanString(x("model")), cleanString(y("family")))
 		}).toIterable.groupBy { _ _1 }
-		println(bucketOnMfg(l.toIterable, pByMfg.keys))
+		for((product,listings) <- matchAllMfg(pByMfg, bucketOnMfg(l.toIterable, pByMfg.keys))) {
+			if(product != "") {
+				println(Json.generate(List(("product_name", product),("listings",listings)).toMap))
+			}
+		}
 	} finally {
 		listings.close
 		products.close
