@@ -7,6 +7,7 @@ All solutions assume that the listings.txt and products.txt files are in the cur
 All solutions write the final JSON to stdout.  Run like this:
 
 ./match > output.json
+scala -classpath .:jackson.jar Match > output.json
 
 == Requirements for the Haskell ==
 
