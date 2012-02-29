@@ -10,7 +10,7 @@ import scala.math._
     algorithm.
 */
 
-object Main extends App {
+object Match extends App {
 	type StringMap = Map[String,String]
 
 	def lcsubs(xs: String, ys: String) = {

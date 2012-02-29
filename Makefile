@@ -3,12 +3,12 @@ HLINTFLAGS=-XHaskell98 -XNoCPP -i 'Use camelCase' -i 'Use String' -i 'Use head' 
 
 .PHONY: all shell clean
 
-all: match Main.class
+all: match Match.class
 
 match: match.hs
 	ghc $(GHCFLAGS) -o $@ $^
 
-Main.class: match.scala jackson.jar com/codahale/jerkson/Json.class
+Match.class: match.scala jackson.jar com/codahale/jerkson/Json.class
 	scalac -classpath .:jackson.jar -optimise -unchecked match.scala
 
 com/codahale/jerkson/Json.class: jackson.jar com/codahale/jerkson/JsonSnakeCase.class
