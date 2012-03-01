@@ -8,6 +8,8 @@ import Text.JSON (Result(..))
 import qualified Text.JSON as JSON
 import Data.Map (Map,(!))
 import qualified Data.Map as Map
+import Data.Text (Text)
+import qualified Data.Text as T
 
 type StringMap = [(String, String)]
 type DictMap = Map String [StringMap]
@@ -60,9 +62,9 @@ bucketOnMfg l mfgs =
 		Nothing -> lookup "title" x
 		x -> x
 
-cleanString :: String -> String
+cleanString :: String -> Text
 cleanString s =
-	concat $ addSpaces (concat $ tokens (map toLower s) []) []
+	T.pack $ concat $ addSpaces (concat $ tokens (map toLower s) []) []
 	where
 	-- Add a space after every number that does not already have on after it
 	addSpaces [] xs = xs
@@ -87,14 +89,14 @@ cleanString s =
 		    recurse = tokens rest xs in
 			token : if isDigit (last token) then " ":recurse else recurse
 
-stripPrefix' :: Eq a => [a] -> [a] -> [a]
-stripPrefix' prefix xs = fromMaybe xs (stripPrefix prefix xs)
+stripPrefix' :: String -> Text -> Text
+stripPrefix' prefix xs = fromMaybe xs (T.stripPrefix (T.pack prefix) xs)
 
-matchOneMfg :: [(String,String,String)] -> DictMap -> StringMap -> DictMap
+matchOneMfg :: [(String,Text,Text)] -> DictMap -> StringMap -> DictMap
 matchOneMfg mfgProducts m listing =
 	case filter (\(_,query,_) ->
 		-- Filter by model
-		fromMaybe False $ fmap (isInfixOf query) cleanTitle
+		fromMaybe False $ fmap (T.isInfixOf query) cleanTitle
 	) mfgProducts of
 		[] -> continueWithStrip mfgProducts
 		[(name,_,_)] -> ins name m
@@ -104,7 +106,7 @@ matchOneMfg mfgProducts m listing =
 		case filter (\(_,query,_) ->
 			-- Filter by model, strip common prefixes
 			fromMaybe False $
-				fmap (isInfixOf $ stripPrefixes query) cleanTitle
+				fmap (T.isInfixOf $ stripPrefixes query) cleanTitle
 		) xs of
 			[] -> m -- No product matched
 			[(name,_,_)] -> ins name m
@@ -112,21 +114,21 @@ matchOneMfg mfgProducts m listing =
 	continueByFamily xs =
 		case filter (\(_,_,query) ->
 			-- Filter by family
-			length query > 0 &&
-				fromMaybe False (fmap (isInfixOf query) cleanTitle)
+			T.length query > 0 &&
+				fromMaybe False (fmap (T.isInfixOf query) cleanTitle)
 		) xs of
 			[] -> m -- No product matched
 			[(name,_,_)] -> ins name m
 			ys -> -- Still more than one match. Take the longest model
 				let (name,_,_) = maximumBy (\(_,a,_) (_,b,_) ->
-						comparing length a b
+						comparing T.length a b
 					) ys in ins name m
 	stripPrefixes s = stripPrefix' "slt" $
 		stripPrefix' "dsc" $ stripPrefix' "dslr" s
 	ins name = Map.insertWith (++) name [listing]
 	cleanTitle = fmap cleanString (lookup "title" listing)
 
-matchAllMfg :: Map (Maybe String) [(String,String,String)] ->
+matchAllMfg :: Map (Maybe String) [(String,Text,Text)] ->
                DictMap -> DictMap
 matchAllMfg pByMfg = Map.foldrWithKey (\mfg grp m ->
 		-- Build up a map from product_name to list of listings
